@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metropolia Toruńska — Extras</title>
+  <style>
+    /*
+     * Enforce the HTML `hidden` attribute over any author-stylesheet display
+     * rule.  Without this, an ID-selector rule like `#tab-row { display: flex }`
+     * (specificity 0,1,0,0) overrides the UA-stylesheet `[hidden] { display: none }`
+     * (specificity 0,0,1,0), making the element stay visible despite the attribute.
+     */
+    [hidden] { display: none !important; }
+
+    /*
+     * Screen-reader-only utility: visually hides an element while keeping it
+     * accessible to assistive technology (satisfies NFR-016 label requirement).
+     */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    /* Minimal header: no content; kept so FR-011 vertical-order test passes. */
+    header { padding: 0.25rem; }
+
+    /* Stack and centre all page sections vertically. */
+    main { display: flex; flex-direction: column; align-items: center; }
+
+    /*
+     * Content column: gives the logo row and the search bar the same width.
+     * max-width: 600px caps the layout on wide desktops.
+     * padding: 0 1rem prevents the logo from touching the screen edge on narrow phones.
+     * box-sizing: border-box so padding is included in the 600px cap.
+     * flex-direction: column stacks children (logo, watermark, tab row, sections).
+     */
+    #content {
+      width: 100%;
+      max-width: 600px;
+      padding: 0 1rem;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /*
+     * Logo row: two equal columns inside #content.
+     * CSS Grid with 1fr 1fr guarantees exactly equal halves regardless of
+     * content size; flexbox with flex:1 is unreliable here because
+     * min-width:auto on the image flex item can cause #logo-left to expand
+     * beyond its allocated half, offsetting the feed icon.
+     * Left half centres the site logo; right half centres the feed icon
+     * (and any future icons added there).
+     * Placing the feed link here saves one row of vertical space compared
+     * to a separate header entry, which matters on mobile phones (FR-010).
+     */
+    #logo-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    #logo-left {
+      display: flex;
+      justify-content: center;
+    }
+    /*
+     * Stack the feed icon and copyright vertically, right-aligned to the edge
+     * of the right grid cell so they stay flush with the right end of the
+     * search bar below.  align-items: flex-end controls horizontal placement
+     * in a column flex container.
+     */
+    #logo-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+
+    /* Copyright notice below the feed icon. */
+    #copyright {
+      font-size: 0.7rem;
+      color: #666;
+      text-align: center;
+    }
+
+    /* Scale logo to the full width of its half on very narrow screens. */
+    #logo { max-width: 100%; }
+
+    /*
+     * Watermark: outline-only text (transparent fill, gray stroke) centred
+     * between the logo row and the tab row.
+     * -webkit-text-stroke is the standard way to produce hollow letterforms in CSS.
+     */
+    #watermark {
+      text-align: center;
+      font-size: 0.9rem;
+      color: transparent;
+      -webkit-text-stroke: 1px #aaa;
+      margin-bottom: 0.5rem;
+    }
+
+    /*
+     * Tab switcher row: appears below the watermark and is sticky at the top
+     * of the viewport in both "Szukaj" and "Rozmawiaj" modes.
+     * background: white ensures the sticky row hides content scrolling behind it.
+     * z-index: 20 keeps the tab row above the search container (z-index: 10).
+     */
+    #tab-row {
+      display: flex;
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 20;
+      border-bottom: 1px solid #ddd;
+      margin-bottom: 0.4rem;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 0.5rem;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 1rem;
+      color: #555;
+    }
+    .tab-btn[aria-selected="true"] {
+      color: #000;
+      border-bottom: 2px solid #000;
+      font-weight: bold;
+    }
+
+    /*
+     * Search bar fills the full #content width.
+     * flex: 1 on the input makes it expand to fill the space left by the button.
+     * position: sticky keeps both the tab row and the search bar visible while
+     * the user scrolls through results (FR-017 sticky requirement).
+     * top value accounts for the tab row height (~2.5rem) so the search bar
+     * sticks below the tab row without overlapping it.
+     */
+    #search-container {
+      display: flex;
+      margin-bottom: 0.4rem;
+      position: sticky;
+      top: 2.5rem;
+      background: white;
+      z-index: 10;
+    }
+    /*
+     * Only vertical padding increases touch target height without affecting
+     * horizontal layout.  Horizontal padding would widen both elements and
+     * push the row past the container edge.
+     */
+    #search-input { flex: 1; padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    #search-button { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+
+    /* Result count: one compact line between the search bar and the results. */
+    #result-count { font-size: 0.8rem; color: #666; min-height: 1.2em; margin-bottom: 0.4rem; }
+
+    /*
+     * Result cards: title-date row, then excerpt.
+     * A thin border separates cards; the last card has no bottom border.
+     */
+    .result-card {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #ddd;
+    }
+    .result-card:last-child { border-bottom: none; }
+    /*
+     * Title row: plain inline flow so the title gets the full container width
+     * when it wraps.  The date is an inline prefix separated by a small right
+     * margin; the title link follows on the same line.  When the title is long
+     * enough to wrap, the continuation lines start at the left edge at full
+     * width, wasting no space.
+     */
+    .result-title-row { margin-bottom: 0.2rem; }
+    .result-date {
+      font-size: 0.85rem;
+      color: #666;
+      margin-right: 0.3em;
+    }
+    /* Date prefix on Źródła lines in chat responses — matches .result-date. */
+    .source-date { font-size: 0.85rem; color: #666; margin-right: 0.3em; }
+    .result-title { font-weight: bold; }
+    .result-excerpt { margin: 0; }
+    /* Highlight matched tokens produced by FTS5 snippet(). */
+    mark { background: #ff9; padding: 0 1px; }
+
+    /*
+     * Rozmawiaj section: stacks conversation + chat-container in a column.
+     * Height is set dynamically by JS in activateRozmawiaj() so it adapts
+     * to the actual rendered header height on any device and viewport size.
+     * A CSS calc() value cannot do this reliably because the header height
+     * varies with font size, logo dimensions, and screen width.
+     */
+    #rozmawiaj-section { display: flex; flex-direction: column; }
+
+    /*
+     * Conversation area: grows to fill all available space inside
+     * #rozmawiaj-section above the chat-container, then scrolls when
+     * messages overflow.
+     *
+     * `min-height: 0` overrides the browser default `min-height: auto` on
+     * flex items, which would otherwise prevent #conversation from shrinking
+     * below its content height and cause it to overflow the section.
+     */
+    #conversation { flex: 1; overflow-y: auto; min-height: 0; }
+
+    /*
+     * Message cards: user messages are right-aligned (WhatsApp pattern),
+     * assistant messages are left-aligned.
+     */
+    .msg-user {
+      text-align: right;
+      background: #eef;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .msg-assistant {
+      text-align: left;
+      background: #f5f5f5;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      margin-bottom: 0.5rem;
+      /* Preserve newlines from the server response (e.g. Źródła: list). */
+      white-space: pre-wrap;
+    }
+
+    /*
+     * Chat input container: sits at the bottom of #rozmawiaj-section as a
+     * normal flex item (no fixed/absolute positioning).  Width is inherited
+     * from #content (max 600px) which looks cleaner than spanning the full
+     * viewport on wide desktops.
+     */
+    #chat-container {
+      display: flex;
+      background: white;
+      border-top: 1px solid #ddd;
+      padding: 0.5rem 1rem;
+      box-sizing: border-box;
+    }
+    #chat-input { flex: 1; padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    #chat-button { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <!-- no content; element kept for FR-011 vertical-order assertion -->
+  </header>
+  <main>
+    <div id="content">
+      <div id="logo-row">
+        <div id="logo-left">
+          <a href="https://metropolia-torunska.pl/" rel="noopener" target="_blank">
+            <img id="logo" src="logo.png" alt="Logo Metropolia Toruńska">
+          </a>
+        </div>
+        <div id="logo-right">
+          <a id="feed-link" href="atom.xml" rel="alternate" type="application/atom+xml">
+            <img src="feed-icon-28x28.e077f1f611f0.png" alt="Atom/RSS" width="28" height="28">
+          </a>
+          <small id="copyright">&copy; <a href="https://github.com/marcindulak/metropolia-torunska-extras">marcindulak</a></small>
+        </div>
+      </div>
+      <div id="watermark" aria-hidden="true">Wersja nieoficjalna</div>
+
+      <!-- Tab switcher: visible in both modes, sticky at top (FR-017). -->
+      <div id="tab-row" role="tablist">
+        <button
+          id="tab-szukaj"
+          class="tab-btn"
+          role="tab"
+          aria-selected="true"
+          aria-controls="szukaj-section"
+          type="button"
+        >Szukaj</button>
+        <button
+          id="tab-rozmawiaj"
+          class="tab-btn"
+          role="tab"
+          aria-selected="false"
+          aria-controls="rozmawiaj-section"
+          type="button"
+        >Rozmawiaj</button>
+      </div>
+
+      <!-- Szukaj section: search input (sticky) + results (scrolls). -->
+      <div id="szukaj-section" role="tabpanel">
+        <div id="search-container">
+          <label for="search-input" class="sr-only">Szukaj artykułów</label>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Trwa ładowanie..."
+            disabled
+          >
+          <button id="search-button" type="button">Szukaj</button>
+        </div>
+        <div id="result-count"></div>
+        <div id="results" aria-live="polite"></div>
+      </div>
+
+      <!-- Rozmawiaj section: conversation view (bounded, scrollable) + chat input below. -->
+      <div id="rozmawiaj-section" role="tabpanel" hidden>
+        <div id="conversation" aria-live="polite"></div>
+        <div id="chat-container">
+          <label for="chat-input" class="sr-only">Zadaj pytanie</label>
+          <input
+            type="text"
+            id="chat-input"
+            placeholder="Zadaj pytanie..."
+          >
+          <button id="chat-button" type="button">Wyślij</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!--
+    Official SQLite WebAssembly build (@sqlite.org/sqlite-wasm 3.51.2-build8) loaded
+    from jsDelivr CDN.  sql.js was considered but rejected because it is compiled
+    without FTS5 support (see REQUIREMENTS.md Abandoned Ideas).
+    The locateFile callback resolves the WASM binary to the same CDN base.
+  -->
+  <script type="module">
+  import sqlite3InitModule from 'https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.51.2-build8/dist/index.mjs';
+
+  const input = document.getElementById('search-input');
+  const searchButton = document.getElementById('search-button');
+  const resultCount = document.getElementById('result-count');
+  const results = document.getElementById('results');
+  const tabSzukaj = document.getElementById('tab-szukaj');
+  const tabRozmawiaj = document.getElementById('tab-rozmawiaj');
+  const szukajSection = document.getElementById('szukaj-section');
+  const rozmawiajSection = document.getElementById('rozmawiaj-section');
+  const conversation = document.getElementById('conversation');
+  const chatInput = document.getElementById('chat-input');
+  const chatButton = document.getElementById('chat-button');
+
+  let db = null;
+
+  const params = new URLSearchParams(window.location.search);
+
+  /*
+   * ?mode=chat enables the "Rozmawiaj" tab and the tab switcher row.
+   * Any other value (or absent) shows the search interface only.
+   * FR-018.
+   */
+  const mode = params.get('mode') || 'search';
+  if (mode !== 'chat') {
+    document.getElementById('tab-row').hidden = true;
+    /*
+     * The search container sticks at top: 2.5rem to stay below the tab row.
+     * When the tab row is hidden it no longer occupies space, so adjust the
+     * sticky offset to top: 0 to avoid a blank gap at the viewport top.
+     */
+    document.getElementById('search-container').style.top = '0';
+  }
+
+  /*
+   * ?db= accepts only simple filenames (letters, digits, dots, hyphens,
+   * underscores ending in .db) so that the test fixture works but external
+   * URLs like "https://evil.com/evil.db" and path traversal like
+   * "../secret.db" are rejected.  Rejected values fall back to "articles.db".
+   * NFR-019 Fix 3.
+   */
+  const rawDb = params.get('db') || '';
+  const dbPath = /^[\w.-]+\.db$/.test(rawDb) ? rawDb : 'articles.db';
+
+  /*
+   * ?api= is honoured only on local or development origins to prevent message
+   * exfiltration: a crafted link like
+   *   https://yoursite.github.io/?api=https://attacker.com
+   * would send every user-typed chat message to the attacker's server.
+   * The allowlist covers localhost (browser dev), 127.0.0.1 (direct IP),
+   * and "server" (the Docker Compose service hostname used by Playwright).
+   * On all other origins, including *.github.io, the override is silently
+   * ignored and the default local AI endpoint is used.
+   * NFR-019 Fix 1.
+   */
+  const allowApiOverride =
+      ['localhost', '127.0.0.1', 'server'].includes(window.location.hostname)
+      || window.location.protocol === 'file:';
+  const apiBase = (allowApiOverride && params.get('api')) || 'http://127.0.0.1:8001';
+
+  /*
+   * Control characters used as markers around matched tokens in FTS5 snippet()
+   * output.  char(1) (SOH) and char(2) (STX) cannot appear in normal article
+   * text, making them safe delimiters that survive HTML-escaping unchanged.
+   */
+  const MARK_OPEN = '\x01';
+  const MARK_CLOSE = '\x02';
+
+  /*
+   * Converts a plain-text query into an FTS5 MATCH expression.
+   *
+   * If the query already contains FTS5 operators (quote, dash, asterisk,
+   * parentheses, caret, or uppercase AND/OR/NOT/NEAR) it is passed through
+   * unchanged so that power users can write raw FTS5 syntax.
+   *
+   * Otherwise, each whitespace-separated token has '*' appended.  This
+   * enables two features simultaneously:
+   *   - Prefix search: "budze" matches "budżet".
+   *   - Diacritic-insensitive prefix search: "budze*" matches "budżet"
+   *     because the FTS5 index is built with remove_diacritics=2, which
+   *     stores "budżet" as "budzet" in the index.
+   */
+  function buildFtsQuery(query) {
+    if (/["*\-()^]/.test(query) || /\b(AND|OR|NOT|NEAR)\b/.test(query)) {
+      return query;
+    }
+    return query.split(/\s+/).filter(t => t).map(t => t + '*').join(' ');
+  }
+
+  /*
+   * HTML-escapes a string, then replaces the MARK_OPEN/MARK_CLOSE control
+   * characters with <mark> tags.  Escaping happens first so that any HTML
+   * special characters in the article text cannot inject markup, and only
+   * our own control-char markers become HTML tags.
+   */
+  function escapeWithMarks(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\x01/g, '<mark>')
+      .replace(/\x02/g, '</mark>');
+  }
+
+  /*
+   * Returns the correct Polish grammatical form of "wynik" for a given count.
+   * Rules: 1 → "wynik"; 2–4 (excluding 12–14) → "wyniki"; rest → "wyników".
+   * The teen numbers 12–14 use "wyników" despite ending in 2–4.
+   */
+  function pluralWynik(n) {
+    if (n === 1) return 'wynik';
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'wyniki';
+    return 'wyników';
+  }
+
+  /*
+   * Queries the FTS5 index and returns all matching rows.
+   * Uses the same JOIN + date-descending ordering as src/database.py search_articles().
+   * The FTS5 snippet() function returns a ~10-token window around each match
+   * with MARK_OPEN/MARK_CLOSE surrounding the matched tokens; callers render
+   * this via escapeWithMarks().
+   * Throws on invalid FTS5 syntax; callers must catch.
+   */
+  function queryFts(query) {
+    const rows = [];
+    db.exec({
+      sql: 'SELECT a.url, a.title, a.published_date,' +
+           ' snippet(articles_fts, 1, char(1), char(2), \'…\', 10) AS body_excerpt' +
+           ' FROM articles a' +
+           ' JOIN articles_fts ON a.rowid = articles_fts.rowid' +
+           ' WHERE articles_fts MATCH ?' +
+           ' ORDER BY COALESCE(a.published_date, \'\') DESC',
+      bind: [query],
+      rowMode: 'object',
+      callback: row => rows.push(row)
+    });
+    return rows;
+  }
+
+  /*
+   * Builds a result-card DOM element for one article row.
+   * Structure: .result-card > .result-title-row (.result-date + .result-title link)
+   *            + .result-excerpt (p).
+   * The date is an inline prefix; the title follows on the same line.
+   * The excerpt uses innerHTML so that <mark> tags render.
+   */
+  function buildResultCard(row) {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'result-title-row';
+
+    const date = document.createElement('span');
+    date.className = 'result-date';
+    date.textContent = row.published_date || '';
+    titleRow.appendChild(date);
+
+    const link = document.createElement('a');
+    link.className = 'result-title';
+    /*
+     * Only http: and https: are allowed as link schemes to prevent a malicious
+     * database from injecting javascript: URLs that execute script on click.
+     * An empty href makes the link inert (it navigates to the current page).
+     * NFR-019 Fix 2.
+     */
+    let safeUrl = '';
+    try {
+      const parsed = new URL(row.url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        safeUrl = row.url;
+      }
+    } catch (_) {}
+    link.href = safeUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = row.title || row.url;
+    titleRow.appendChild(link);
+
+    card.appendChild(titleRow);
+
+    const excerpt = document.createElement('p');
+    excerpt.className = 'result-excerpt';
+    excerpt.innerHTML = escapeWithMarks(row.body_excerpt || '');
+    card.appendChild(excerpt);
+
+    return card;
+  }
+
+  /*
+   * Queries all articles ordered by publication date descending.
+   * Used when the search input is empty to show the full article list
+   * as the default page view.  Returns rows in the same shape as queryFts()
+   * but with an empty body_excerpt, because there is no search term to
+   * anchor an FTS5 snippet window.
+   */
+  function queryAll() {
+    const rows = [];
+    db.exec({
+      sql: 'SELECT url, title, published_date, \'\' AS body_excerpt' +
+           ' FROM articles' +
+           ' ORDER BY COALESCE(published_date, \'\') DESC',
+      rowMode: 'object',
+      callback: row => rows.push(row)
+    });
+    return rows;
+  }
+
+  /*
+   * Runs a new search: clears existing results and the count, then either
+   * shows all articles (empty query) or queries the FTS5 index (non-empty
+   * query).  An empty query shows every article ordered newest-first so that
+   * first-time visitors see recent content immediately.  An invalid FTS5
+   * expression is silently treated as no results.  All results are rendered
+   * at once; the user scrolls natively.
+   */
+  function performSearch(query) {
+    results.innerHTML = '';
+    resultCount.textContent = '';
+
+    if (!query.trim()) {
+      const rows = queryAll();
+      rows.forEach(row => results.appendChild(buildResultCard(row)));
+      resultCount.textContent = `${rows.length}\u00a0${pluralWynik(rows.length)}`;
+      return;
+    }
+
+    try {
+      const rows = queryFts(buildFtsQuery(query.trim()));
+      rows.forEach(row => results.appendChild(buildResultCard(row)));
+      resultCount.textContent = `${rows.length}\u00a0${pluralWynik(rows.length)}`;
+    } catch (_) {
+      // Invalid FTS5 syntax: leave results and count blank.
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Tab switching (FR-017)                                               */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * Gap in pixels between the bottom edge of #chat-container and the
+   * bottom of the viewport when #rozmawiaj-section is active.
+   * 1 rem (16 px base) gives visible breathing room without
+   * pushing the form too far up.
+   */
+  const CHAT_BOTTOM_MARGIN_PX = 16;
+
+  /*
+   * Sets #rozmawiaj-section height so that #chat-container lands
+   * CHAT_BOTTOM_MARGIN_PX pixels above the viewport bottom.
+   *
+   * Uses getBoundingClientRect().top on the section itself (after it is
+   * made visible) so the calculation adapts to the actual rendered header
+   * height on any device.  A CSS calc() value cannot do this reliably
+   * because the header height varies with font size, logo size, and width.
+   */
+  function resizeRozmawiajSection() {
+    const top = rozmawiajSection.getBoundingClientRect().top;
+    rozmawiajSection.style.height =
+      (window.innerHeight - top - CHAT_BOTTOM_MARGIN_PX) + 'px';
+  }
+
+  /*
+   * Switches to "Szukaj" mode: shows the search section, hides the chat
+   * section, and marks the Szukaj tab as active.
+   * Clears the inline height set by activateRozmawiaj() so that the
+   * section has no height while hidden.
+   */
+  function activateSzukaj() {
+    tabSzukaj.setAttribute('aria-selected', 'true');
+    tabRozmawiaj.setAttribute('aria-selected', 'false');
+    rozmawiajSection.setAttribute('hidden', '');
+    rozmawiajSection.style.height = '';
+    szukajSection.removeAttribute('hidden');
+  }
+
+  /*
+   * Switches to "Rozmawiaj" mode: hides the search section, shows the
+   * chat section, marks the Rozmawiaj tab as active, then sets the
+   * section height via resizeRozmawiajSection().
+   *
+   * szukajSection is hidden before rozmawiajSection is shown so that the
+   * DOM is in a stable state when getBoundingClientRect() is called.
+   */
+  function activateRozmawiaj() {
+    tabRozmawiaj.setAttribute('aria-selected', 'true');
+    tabSzukaj.setAttribute('aria-selected', 'false');
+    szukajSection.setAttribute('hidden', '');
+    rozmawiajSection.removeAttribute('hidden');
+    resizeRozmawiajSection();
+  }
+
+  tabSzukaj.addEventListener('click', activateSzukaj);
+  tabRozmawiaj.addEventListener('click', activateRozmawiaj);
+
+  /*
+   * Re-calculate #rozmawiaj-section height on viewport resize (e.g. phone
+   * rotation or browser window resize) so the chat input stays near the
+   * bottom.
+   */
+  window.addEventListener('resize', () => {
+    if (!rozmawiajSection.hasAttribute('hidden')) {
+      resizeRozmawiajSection();
+    }
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* Chat for "Rozmawiaj" (FR-017)                                       */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * Renders text into a DOM element, turning allowed URLs into clickable <a> links.
+   *
+   * Plain text segments are inserted as text nodes (no innerHTML, no XSS risk).
+   * Only URLs whose hostname is exactly metropolia-torunska.pl or a subdomain of it
+   * become <a href target="_blank" rel="noopener"> elements.  All other URLs
+   * (including any injected by a misbehaving model) remain plain text and are not
+   * navigable, preventing open-redirect and phishing risks.
+   *
+   * Clears any existing children of div before rendering.
+   */
+  function renderMessageContent(div, text) {
+    while (div.firstChild) {
+      div.removeChild(div.firstChild);
+    }
+    /*
+     * Match an optional YYYY-MM-DD date prefix immediately before a URL.
+     * Group 1: date + trailing space (may be absent).
+     * Group 2: the URL itself.
+     * The date is rendered as .source-date (gray, 0.85rem) to match the
+     * article list style; the URL becomes a link when the hostname is
+     * metropolia-torunska.pl.
+     */
+    const tokenRegex = /(\d{4}-\d{2}-\d{2} )?(https?:\/\/\S+)/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = tokenRegex.exec(text)) !== null) {
+      const datePrefix = match[1] || '';
+      const url = match[2];
+      if (match.index > lastIndex) {
+        div.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+      }
+      if (datePrefix) {
+        const span = document.createElement('span');
+        span.className = 'source-date';
+        span.textContent = datePrefix;
+        div.appendChild(span);
+      }
+      let isAllowed = false;
+      try {
+        const hostname = new URL(url).hostname;
+        isAllowed = hostname === 'metropolia-torunska.pl' ||
+                    hostname.endsWith('.metropolia-torunska.pl');
+      } catch (_) {
+        // Malformed URL — leave as plain text.
+      }
+      if (isAllowed) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.textContent = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        div.appendChild(a);
+      } else {
+        div.appendChild(document.createTextNode(url));
+      }
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+      div.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+  }
+
+  /*
+   * Appends a message bubble to the conversation view.
+   * role: 'user' or 'assistant' — controls alignment and background colour.
+   * Assistant messages use renderMessageContent so URLs become clickable links.
+   */
+  function appendMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = role === 'user' ? 'msg-user' : 'msg-assistant';
+    if (role === 'assistant') {
+      renderMessageContent(div, text);
+    } else {
+      div.textContent = text;
+    }
+    conversation.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return div;
+  }
+
+  /*
+   * Conversation history maintained for the browser session.
+   * Each element is an OpenAI message object with role and content.
+   * No system message is included: the inference backend (FR-016) adds its own
+   * system message for the pattern-matching strategy (FR-019).
+   */
+  let history = [];
+
+  /*
+   * Handles a user chat submission: adds the user message to history,
+   * renders it, clears the input, POSTs to the backend, and displays the reply.
+   *
+   * The backend (FR-016) runs search and inference server-side.
+   * The browser always receives a plain content response — no tool_calls.
+   * A "…" placeholder bubble is shown while the model is thinking.
+   */
+  async function sendMessage() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    chatInput.value = '';
+    history.push({ role: 'user', content: text });
+    appendMessage('user', text);
+
+    const thinkingDiv = appendMessage('assistant', '…');
+    chatButton.disabled = true;
+    chatInput.disabled = true;
+
+    try {
+      const response = await fetch(`${apiBase}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history })
+      });
+      if (!response.ok) throw new Error(`API error ${response.status}`);
+      const data = await response.json();
+      const choice = data.choices && data.choices[0];
+      if (!choice) throw new Error('Empty response from model');
+      const msg = choice.message;
+      history.push(msg);
+      renderMessageContent(thinkingDiv, msg.content || '');
+    } catch (err) {
+      thinkingDiv.textContent = `Błąd: ${err.message}`;
+    } finally {
+      chatButton.disabled = false;
+      chatInput.disabled = false;
+      chatInput.focus();
+    }
+  }
+
+  chatButton.addEventListener('click', sendMessage);
+  chatInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter') sendMessage();
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* SQLite WASM initialisation                                           */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * Initialise the official SQLite WASM module, then fetch the database file
+   * and load it into memory via sqlite3_deserialize.  Flag 0 means the buffer
+   * is fixed-size and sqlite3 does not own it (the module retains ownership).
+   */
+  const sqlite3 = await sqlite3InitModule({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.51.2-build8/dist/${file}`
+  });
+  db = new sqlite3.oo1.DB();
+  const response = await fetch(dbPath);
+  const arrayBuffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  const p = sqlite3.wasm.allocFromTypedArray(bytes);
+  const rc = sqlite3.capi.sqlite3_deserialize(
+    db.pointer, 'main', p, bytes.length, bytes.length, 0
+  );
+  db.checkRc(rc);
+
+  // Database loaded: activate the search input.
+  input.disabled = false;
+  input.placeholder = 'Wpisz szukane słowo lub frazę';
+
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') performSearch(input.value);
+  });
+  searchButton.addEventListener('click', () => performSearch(input.value));
+
+  // Show all articles immediately so first-time visitors see recent content.
+  performSearch('');
+  </script>
+</body>
+</html>
